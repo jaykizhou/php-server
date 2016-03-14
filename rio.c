@@ -1,12 +1,11 @@
-#include <stdio.h>
 #include "rio.h"
 
 /*
- * 从描述符fd的当前文件位置最多传送n个字节到存储器位置usrbuf
+ * 从描述符fd中读取n个字节到存储器位置usrbuf
  */
 ssize_t rio_readn(int fd, void *usrbuf, size_t n)
 {
-    size_t nleft = n;
+    size_t nleft = n; // 剩下的未读字节数
     ssize_t nread;
     char *bufp = usrbuf;
 
@@ -15,7 +14,7 @@ ssize_t rio_readn(int fd, void *usrbuf, size_t n)
             if (errno == EINTR) { // 被信号处理函数中断返回
                 nread = 0;
             } else {
-                return -1;  
+                return -1;  // read出错 
             }
         } else if (nread == 0) { // EOF
             break;
@@ -33,7 +32,7 @@ ssize_t rio_readn(int fd, void *usrbuf, size_t n)
  */
 ssize_t rio_writen(int fd, void *usrbuf, size_t n)
 {
-    size_t nleft = n;
+    size_t nleft = n; // 剩下的未写入字节数
     ssize_t nwritten;
     char *bufp = usrbuf;
 
@@ -53,7 +52,7 @@ ssize_t rio_writen(int fd, void *usrbuf, size_t n)
 }
 
 /*
- * 初始化缓冲区rio_t结构
+ * 初始化内部缓冲区rio_t结构
  */
 void rio_readinitb(rio_t *rp, int fd)
 {
@@ -62,11 +61,15 @@ void rio_readinitb(rio_t *rp, int fd)
     rp->rio_bufptr = rp->rio_buf;
 }
 
+/*
+ * 系统调用read函数的包装函数
+ */
 static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
 {
     int cnt;
 
-    while (rp->rio_cnt <= 0) { // 缓冲区为空，继续读取数据到缓冲区
+    // 内部缓冲区为空，从缓冲区对应的描述符中继续读取字节填满内部缓冲区
+    while (rp->rio_cnt <= 0) { 
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
 
         if (rp->rio_cnt < 0) { // 返回-1
@@ -80,21 +83,22 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
         }
     }
 
-    // 比较调用所需的字节数n与内部缓冲区剩余的字节数rp->rio_cnt
+    // 比较调用所需的字节数n与内部缓冲区可读字节数rp->rio_cnt
     // 取其中最小值
     cnt = n;
     if (rp->rio_cnt < n) {
         cnt = rp->rio_cnt;
     }
-    memcpy(usrbuf, rp->rio_buffer, cnt);
+    memcpy(usrbuf, rp->rio_bufptr, cnt);
     rp->rio_bufptr += cnt;
-    rp->rio_cnt = cnt;
+    rp->rio_cnt -= cnt;
 
     return cnt;
 }
 
 /*
- * 从读缓冲区取一行数据
+ * 从文件rp中读取一行数据（包括结尾的换行符），拷贝到usrbuf
+ * 并用0字符来结束这行数据
  */
 ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
 {
@@ -123,16 +127,16 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
 }
 
 /*
- * 读取n字节数据
+ * 从文件rp中读取n字节数据到usrbuf
  */
 ssize_t rio_readnb(rio_t *rp, void *usrbuf, size_t n)
 {
-    size_t nleft = n;
+    size_t nleft = n; // 剩下的未读取字节数
     ssize_t nread;
     char *bufp = usrbuf;
 
-    while(nleft > 0) {
-        if((nread = rio_read(rp, bufp, nleft)) < 0) {
+    while (nleft > 0) {
+        if ((nread = rio_read(rp, bufp, nleft)) < 0) {
             if(errno == EINTR) { // 被信号处理程序中断返回
                 nread = 0;
             } else {
