@@ -129,7 +129,7 @@ void serve_static(int fd, char *filename, int filesize)
         error_log("open file error");
     }
 
-    if ((srcp = mmap(0, fielsize, PROT_READ, MAP_PRIVATE, srcfd, 0)) == ((void *) -1) {
+    if ((srcp = mmap(0, fielsize, PROT_READ, MAP_PRIVATE, srcfd, 0)) == ((void *) -1)) {
         error_log("mmap error");
     }
     close(srcfd);
@@ -140,6 +140,36 @@ void serve_static(int fd, char *filename, int filesize)
     if (munmap(srcp, filesize) < 0) {
         error_log("munmap error");
     }
+}
+
+/*
+ * 根据文件后缀名判断文件类型
+ */
+void get_filetype(char *filename, char *filetype)
+{
+    if (strstr(filename, ".html")) {
+        strcpy(filetype, "text/html");
+    }
+    else if (strstr(filename, ".gif")) {
+        strcpy(filetype, "image/gif");
+    }
+    else if (strstr(filename, ".jpg")) {
+        strcpy(filetype, "image/jpeg");
+    }
+    else if (strstr(filename, ".png")) {
+        strcpy(filetype, "image/png");
+    }
+    else {
+        strcpy(filetype, "text/plain");
+    }
+}
+
+/*
+ * 处理动态文件请求
+ */
+void serve_dynamic(int fd, char *filename, char *cgiargs)
+{
+    //....
 }
 
 /*
