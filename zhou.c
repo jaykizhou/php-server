@@ -18,14 +18,14 @@ int main(int argc, char *argv[])
 
     listenfd = open_listenfd(port);
     if (listenfd < 0) {
-        error_log("open_listenfd error");
+        error_log("open_listenfd error", DEBUGARGS);
     }
 
     while (1) {
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
         if (connfd < 0) {
-            error_log("accept error");
+            error_log("accept error", DEBUGARGS);
         }
         doit(connfd);
         close(connfd);

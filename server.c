@@ -15,7 +15,7 @@ void doit(int fd)
     // 读取请求行
     rio_readinitb(&rio, fd);
     if (rio_readlineb(&rio, buf, MAXLINE) < 0) {
-        error_log("readlineb error");
+        error_log("readlineb error", DEBUGARGS);
     }
 
     // 提取请求方法、请求URI、HTTP版本
@@ -61,7 +61,7 @@ void doit(int fd)
 /*
  * 读取请求头部信息，目前只是简单忽略
  */
-void read_requesthdrs(rio_t *ro)
+void read_requesthdrs(rio_t *rp)
 {
     char buf[MAXLINE];
 
@@ -74,9 +74,11 @@ void read_requesthdrs(rio_t *ro)
 }
 
 /*
- * 分析请求uri，提取具体文件名和请求参数
+ * 分析请求uri，提取具体文件名和查询参数
  * 请求的是静态文件返回1
  * 请求的是动态文件返回0
+ * 默认的服务器根目录就是程序所在目录
+ * 默认页面是index.html
  */
 int parse_uri(char *uri, char *filename, char *cgiargs)
 {
@@ -119,26 +121,26 @@ void serve_static(int fd, char *filename, int filesize)
     get_filetype(filename, filetype);
     sprintf(buf, "HTTP/1.1 200 OK\r\n");
     sprintf(buf, "%sServer: Zhou Web Server\r\n", buf);
-    sprintf(buf, "%sContent-length: %d\r\n", buf, filesize);
-    sprintf(buf, "%sContent-type: %s\r\b", buf, filetype);
-    if (rio_written(fd, buf, strlen(buf)) < 0) {
-        error_log("write to client error");
+    sprintf(buf, "%sContent-Length: %d\r\n", buf, filesize);
+    sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, filetype);
+    if (rio_writen(fd, buf, strlen(buf)) < 0) {
+        error_log("write to client error", DEBUGARGS);
     }
 
     if ((srcfd = open(filename, O_RDONLY, 0)) < 0) {
-        error_log("open file error");
+        error_log("open file error", DEBUGARGS);
     }
 
-    if ((srcp = mmap(0, fielsize, PROT_READ, MAP_PRIVATE, srcfd, 0)) == ((void *) -1)) {
-        error_log("mmap error");
+    if ((srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0)) == ((void *) -1)) {
+        error_log("mmap error", DEBUGARGS);
     }
     close(srcfd);
-    if (rio_written(fd, srcp, filesize) < 0) {
-        error_log("wirte to client error");
+    if (rio_writen(fd, srcp, filesize) < 0) {
+        error_log("wirte to client error", DEBUGARGS);
     }
 
     if (munmap(srcp, filesize) < 0) {
-        error_log("munmap error");
+        error_log("munmap error", DEBUGARGS);
     }
 }
 
@@ -182,7 +184,7 @@ int open_listenfd(int port)
     struct sockaddr_in serveraddr;
 
     // 创建一个套接字
-    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) <０) {
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         return -1;
     }
 
@@ -224,16 +226,34 @@ void clienterror(int fd, char *cause, char *errnum,
 
     // 发送http响应
     sprintf(buf, "HTTP/1.1 %s %s\r\n", errnum, shortmsg);
-    rio_written(fd, buf, strlen(buf));
+    rio_writen(fd, buf, strlen(buf));
     sprintf(buf, "Content-Type: text/html\r\n");
-    rio_written(fd, buf, strlen(buf));
+    rio_writen(fd, buf, strlen(buf));
     sprintf(buf, "Content-Length: %d\r\n\r\n", strlen(body));
-    rio_written(fd, buf, strlen(buf));
-    rio_written(fd, body, strlen(body));
+    rio_writen(fd, buf, strlen(buf));
+    rio_writen(fd, body, strlen(body));
 }
 
-void error_log(char *msg)
+/*
+ * 打印错误信息
+ */
+void error_log(const char *msg, const char *filename, 
+        int line, const char *func)
 {
-    fprintf(stderr, "%s: %s\n", msg, strerror(errno));
+    fprintf(stderr, "%s(%d)-%s a error happen -> %s：%s\n", filename, line,
+            func, msg, strerror(errno));
     exit(0);
+}
+
+/*
+ * 将str前n个字符转换为小写
+ */
+void strtolow(char *str, int n)
+{
+    char *cur = str;
+    while (n > 0) {
+        *cur = tolower(*cur);
+        cur++;
+        n--;
+    }
 }

@@ -63,6 +63,7 @@ void rio_readinitb(rio_t *rp, int fd)
 
 /*
  * 系统调用read函数的包装函数
+ * 相对于read，增加了内部缓冲区
  */
 static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
 {

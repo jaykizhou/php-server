@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -18,7 +22,11 @@ int open_listenfd(int port);
 
 #define PORT 8000 // 默认端口号
 
-void error_log(char *msg); // 错误信息处理
+// error_log函数的最后三个参数
+#define DEBUGARGS __FILE__,__LINE__,__FUNCTION__ 
+// 错误信息处理
+void error_log(const char *msg, const char *filename, 
+        int line, const char *func); 
 
 void doit(int fd); // 处理一个http事务
 void read_requesthdrs(rio_t *rp); // 读取请求行
@@ -30,7 +38,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs);
 void serve_static(int fd, char *filename, int filesize);
 
 // 获取请求文件MIME类型
-vid get_filetype(char *filename, char *filetype);
+void get_filetype(char *filename, char *filetype);
 
 // 动态文件请求处理
 void serve_dynamic(int fd, char *filename, char *cgiargs);
