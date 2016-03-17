@@ -2,14 +2,29 @@
 #include "server.h"
 
 /*
+ * 请求头部结构体
+ * 只存储请求行和类型、长度请求体，其他信息忽略
+ * 也存储了从请求地址中分析出的请求文件名和查询参数
+ */
+struct http_header {
+    char uri[256];          // 请求地址
+    char method[16];        // 请求方法
+    char version[16];       // 协议版本
+    char filename[256];     // 请求文件名
+    char cgiargs[256];      // 查询参数
+    char contype[128];      // 请求体类型
+    unsigned int conlength; // 请求体长度
+};
+
+/*
  * 处理一个HTTP事务
  */
 void doit(int fd)
 {
     int is_static;
     struct stat sbuf;
-    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    char filename[MAXLINE], cgiargs[MAXLINE];
+    char buf[MAXLINE];
+    struct http_header hhr;
     rio_t rio;
 
     // 读取请求行
@@ -19,9 +34,10 @@ void doit(int fd)
     }
 
     // 提取请求方法、请求URI、HTTP版本
-    sscanf(buf, "%s %s %s", method, uri, version);
+    sscanf(buf, "%s %s %s", hhr.method, hhr.uri, hhr.version);
 
-    if (strcasecmp(method, "GET")) {
+    // 只接收GET和POST请求
+    if (strcasecmp(method, "GET") || strcasecmp(method, "POST")) {
         clienterror(fd, method, "501", "Not Implement",
                 "Zhou does not implement this method");
         return ;
@@ -80,33 +96,47 @@ void read_requesthdrs(rio_t *rp)
  * 默认的服务器根目录就是程序所在目录
  * 默认页面是index.html
  */
-int parse_uri(char *uri, char *filename, char *cgiargs)
-{
-    char *ptr;
+int parse_uri(char *uri, char *filename, char *cgiargs) 
+{                                                        
+    char *ptr, *query;;                                   
+    char urin[LOCALBUF];
+    char *delim = ".php"; // 根据后缀名判断是静态页面还是动态页面
 
-    if (!strstr(uri, ".php")) { // 静态页面
-        strcpy(cgiargs, "");
-        strcpy(filename, ".");
-        strcat(filename, uri);
+    strcpy(urin, uri); // 不破坏原始字符串
 
-        // 如果以‘/’结尾，自动添加index.html
-        if (uri[strlen(uri) - 1] == '/') {
-            strcat(filename, "index.html");
-        }
-        return 1;
-    } else { // 动态页面
-        // 提取查询参数
-        ptr = index(uri, '?');
+    if (!(query = strstr(urin, delim))) { // 静态页面
+        strcpy(cgiargs, "");                          
+
+        //  删除无用参数 /index.html?123435
+        ptr = index(urin, '?');             
         if (ptr) {
-            strcpy(cgiargs, ptr + 1);
             *ptr = '\0';
-        } else {
-            strcpy(cgiargs, "");
         }
-        strcpy(filename, ".");
-        strcat(filename, uri);
-        return 0;
-    }
+
+        strcpy(filename, ".");                 
+        strcat(filename, urin);                
+        // 如果以‘/’结尾，自动添加index.html  
+        if (urin[strlen(urin) - 1] == '/') {   
+            strcat(filename, "index.html"); 
+        }                                  
+        return 1;                             
+    } else { // 动态页面                     
+        // 提取查询参数                     
+        ptr = index(urin, '?');             
+        if (ptr) {                    
+            strcpy(cgiargs, ptr + 1);
+            *ptr = '\0';        
+        } else {                   
+            // 类似index.php/class/method会提取class/method的参数     
+            if (*(query + sizeof(delim)) == '/') {
+                strcpy(cgiargs, query + sizeof(delim) + 1);                              
+                *(query + sizeof(delim)) = '\0';
+            }
+        }                                                          
+        strcpy(filename, ".");                                        
+        strcat(filename, urin);                                   
+        return 0;                                               
+    }                                                              
 }
 
 /*

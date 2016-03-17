@@ -14,6 +14,7 @@
 
 #define MAXLINE 8192 // 最大行长度
 #define MAXBUF 8192  // io缓冲区最大值
+#define LOCALBUF 1024 // 局部缓冲区大小
 
 typedef struct sockaddr SA;
 
@@ -49,5 +50,8 @@ void serve_dynamic(int fd, char *filename, char *cgiargs);
  */
 void clienterror(int fd, char *cause, char *errnum,
         char *shortmsg, char *longmsg);
+
+// 将str前n个字符转换为小写
+void strtolow(char *str, int n);
 
 #endif
