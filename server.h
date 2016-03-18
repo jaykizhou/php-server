@@ -17,6 +17,7 @@
 #define LOCALBUF 1024 // 局部缓冲区大小
 
 typedef struct sockaddr SA;
+typedef struct http_header hhr_t;
 
 #define LISTENQ 1024 // listen函数的第二个参数
 int open_listenfd(int port);
@@ -30,7 +31,7 @@ void error_log(const char *msg, const char *filename,
         int line, const char *func); 
 
 void doit(int fd); // 处理一个http事务
-void read_requesthdrs(rio_t *rp); // 读取请求行
+void read_requesthdrs(rio_t *rp, hhr_t *hp); // 读取请求行
 
 // 分析uri
 int parse_uri(char *uri, char *filename, char *cgiargs);
@@ -42,7 +43,7 @@ void serve_static(int fd, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
 
 // 动态文件请求处理
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_dynamic(int fd, hhr_t *hp);
 
 /*
  * 向客户端发送一个HTTP响应，其中包含相应的状态码和状态信息

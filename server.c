@@ -3,7 +3,7 @@
 
 /*
  * 请求头部结构体
- * 只存储请求行和类型、长度请求体，其他信息忽略
+ * 只存储请求行和类型、长度字段，其他信息忽略
  * 也存储了从请求地址中分析出的请求文件名和查询参数
  */
 struct http_header {
@@ -12,7 +12,7 @@ struct http_header {
     char version[16];       // 协议版本
     char filename[256];     // 请求文件名
     char cgiargs[256];      // 查询参数
-    char contype[128];      // 请求体类型
+    char contype[256];      // 请求体类型
     unsigned int conlength; // 请求体长度
 };
 
@@ -24,7 +24,7 @@ void doit(int fd)
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE];
-    struct http_header hhr;
+    hhr_t hhr;
     rio_t rio;
 
     // 读取请求行
@@ -37,21 +37,21 @@ void doit(int fd)
     sscanf(buf, "%s %s %s", hhr.method, hhr.uri, hhr.version);
 
     // 只接收GET和POST请求
-    if (strcasecmp(method, "GET") || strcasecmp(method, "POST")) {
-        clienterror(fd, method, "501", "Not Implement",
+    if (strcasecmp(hhr.method, "GET") && strcasecmp(hhr.method, "POST")) {
+        clienterror(fd, hhr.method, "501", "Not Implement",
                 "Zhou does not implement this method");
         return ;
     }
 
     // 读取请求报头
-    read_requesthdrs(&rio);
+    read_requesthdrs(&rio, &hhr);
 
     // 分析请求uri，获得具体请求文件名和请求参数
-    is_static = parse_uri(uri, filename, cgiargs);
+    is_static = parse_uri(hhr.uri, hhr.filename, hhr.cgiargs);
 
     // 判断请求文件是否存在
-    if (stat(filename, &sbuf) < 0) {
-        clienterror(fd, filename, "404", "Not found",
+    if (stat(hhr.filename, &sbuf) < 0) {
+        clienterror(fd, hhr.filename, "404", "Not found",
                 "Zhou couldn't find this file");
         return ;
     }
@@ -59,30 +59,48 @@ void doit(int fd)
     if (is_static) { // 静态文件
         // 判断是否是普通文件及是否有读权限
         if (!S_ISREG(sbuf.st_mode) || !(S_IRUSR & sbuf.st_mode)) {
-            clienterror(fd, filename, "403", "Forbidden",
+            clienterror(fd, hhr.filename, "403", "Forbidden",
                     "Zhou couldn't read the file");
             return ;
         }
-        serve_static(fd, filename, sbuf.st_size);
+        serve_static(fd, hhr.filename, sbuf.st_size);
     } else { // 动态文件
         // 判断是否有执行权限
         if (!S_ISREG(sbuf.st_mode) || !(S_IXUSR & sbuf.st_mode)) {
-            clienterror(fd, filename, "403", "Forbidden",
+            clienterror(fd, hhr.filename, "403", "Forbidden",
                     "Zhou couldn't run the CGI program");
         }
-        serve_dynamic(fd, filename, cgiargs);
+        serve_dynamic(fd, &hhr);
     }
 }
 
 /*
- * 读取请求头部信息，目前只是简单忽略
+ * 读取请求头部信息
+ * 如果是GET请求，则简单忽略
+ * 如果是POST请求，则提取请求体类型和长度
  */
-void read_requesthdrs(rio_t *rp)
+void read_requesthdrs(rio_t *rp, hht_t *hp)
 {
     char buf[MAXLINE];
+    char *start, *end;
 
+    memset(buf, 0, MAXLINE);
     rio_readlineb(rp, buf, MAXLINE);
+
     while (strcmp(buf, "\r\n")) {
+
+        start = index(buf, ':');
+        // 每行数据包含\r\n字符，需要删除
+        end = index(buf, '\r');
+        *end = '\0';
+
+        if (is_contype(buf)) {
+            strcpy(hp->contype, p + 1);
+        } else if (is_conlength(buf)) {
+            strcpy(hp->conlength, p + 1);
+        }
+
+        memset(buf, 0, MAXLINE);
         rio_readlineb(rp, buf, MAXLINE);
     }
 
@@ -199,7 +217,7 @@ void get_filetype(char *filename, char *filetype)
 /*
  * 处理动态文件请求
  */
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic(int fd, hht_t *hp)
 {
     //....
 }
@@ -278,7 +296,7 @@ void error_log(const char *msg, const char *filename,
 /*
  * 将str前n个字符转换为小写
  */
-void strtolow(char *str, int n)
+static void strtolow(char *str, int n)
 {
     char *cur = str;
     while (n > 0) {
@@ -286,4 +304,56 @@ void strtolow(char *str, int n)
         cur++;
         n--;
     }
+}
+
+/*
+ * 判断str起始位置开始是否包含"content-type"
+ * 包含返回1
+ * 不包含返回0
+ */
+static int is_contype(char *str)
+{
+    char *cur = str;
+    char *cmp = "content-type";
+
+    // 删除开始的空格
+    while (*cur == ' ') {
+        cur++;
+    } 
+    
+    for (; *cmp != '\0' && tolower(*cur) == *cmp; cur++,cmp++)
+        ;
+
+    if (*cmp == '\0') { // cmp字符串以0结束
+        return 1;
+    }
+
+    return 0;
+
+}
+
+/*
+ * 判断str起始位置开始是否包含"content-length"
+ * 包含返回1
+ * 不包含返回0
+ */
+static int is_conlength(char *str)
+{
+    char *cur = str;
+    char *cmp = "content-length";
+
+    // 删除开始的空格
+    while (*cur == ' ') {
+        cur++;
+    } 
+    
+    for (; *cmp != '\0' && tolower(*cur) == *cmp; cur++,cmp++)
+        ;
+
+    if (*cmp == '\0') { // cmp字符串以0结束
+        return 1;
+    }
+
+    return 0;
+
 }

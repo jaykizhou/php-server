@@ -1,3 +1,5 @@
+#ifndef __FASTCGI_H__
+#define __FASTCGI_H__
 #include <string.h>
 
 #define FCGI_HOST "127.0.0.1"
@@ -13,18 +15,18 @@
 #define FCGI_STDERR 7
 
 /*
- * Fast_Head struct
+ * fastcgi协议报头
  */
-typedef struct{
-	unsigned char version;
-	unsigned char type;
-	unsigned char requestIdB1;
+typedef struct {
+	unsigned char version;          // 版本
+	unsigned char type;             // 操作类型
+	unsigned char requestIdB1;      // 请求ID
 	unsigned char requestIdB0;
-	unsigned char contentLengthB1;
+	unsigned char contentLengthB1;  // 内容长度
 	unsigned char contentLengthB0;
-	unsigned char paddingLength;
-	unsigned char reserved;
-}FCGI_Header;
+	unsigned char paddingLength;    // 填充字节长度
+	unsigned char reserved;         // 保留字节
+} FCGI_Header;
 
 
 typedef struct{
@@ -62,3 +64,4 @@ FCGI_BeginRequestBody makeBeginRequestBody(
 		int role);
 
 
+#endif
