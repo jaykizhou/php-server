@@ -22,6 +22,8 @@ typedef struct {
 	unsigned char reserved;         // 保留字节
 } FCGI_Header;
 
+#define FCGI_HEADER_LEN     8       // 协议包头长度
+
 /*
  * 可用于FCGI_Header的type组件的值
  */
@@ -119,6 +121,18 @@ typedef int (*write_record)(int, void *, int);
 /*
  * 发送开始请求记录
  */
-int sendBeginRequestRecord(write_record wr);
+int sendBeginRequestRecord(write_record wr, int fd, int requestId);
+
+/*
+ * 发送名值对参数
+ */
+int sendParamsRecord(
+        write_record wr,
+        int fd,
+        int requestId,
+        char *name,
+        int nlen,
+        char *value,
+        int vlen);
 
 #endif
