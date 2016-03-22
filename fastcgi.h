@@ -135,4 +135,40 @@ int sendParamsRecord(
         char *value,
         int vlen);
 
+/*
+ * 发送空的params记录
+ */
+int sendEmptyParamsRecord(write_record wr, int fd, int requestId);
+
+/*
+ * 发送FCGI_STDIN数据
+ */
+int sendStdinRecord(
+        write_record wr,
+        int fd,
+        int requestId,
+        char *data,
+        int len);
+
+/*
+ * 发送空的FCGI_STDIN记录
+ */
+int sendEmptyStdinRecord(write_record wr, int fd, int requestId);
+
+// 读取协议记录函数指针
+typedef int (*read_record)(int, void *, int); 
+
+/*
+ * 读取php-fpm处理结果
+ */
+int recvResult(
+        read_record rr, 
+        int fd, 
+        int requestId,
+        char **sout,
+        int *outlen,
+        char **serr,
+        int *errlen,
+        FCGI_EndRequestRecord *endRequest);
+
 #endif
