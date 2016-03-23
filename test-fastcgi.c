@@ -5,10 +5,16 @@
 
 int main() 
 {
-	int sock;
+	int sock, i, requestId = 1;
 	struct sockaddr_in serv_addr;
-	int str_len;
 	char msg[20];
+
+    char *params[][2] = {
+        {"SCRIPT_FILENAME", "/home/zhou/php-server/test.php"},
+        {"REQUEST_METHOD", "GET"},
+        {"QUERY_STRING", "name=test"},
+        {"",""}
+    };
 
     // 创建套接字
 	sock = socket(PF_INET, SOCK_STREAM, 0);
@@ -28,6 +34,41 @@ int main()
         exit(-1);
 	}
 
+    // 发送开始请求记录
+    if (sendBeginRequestRecord(rio_writen, sock, requestId) < 0) {
+        printf("sendBeginRequestRecord error\n");
+        return -1;
+    }
+
+    // 发送params参数
+    for (i = 0; params[i][0] != ""; i++) {
+        if (sendParamsRecord(rio_writen, sock, requestId, params[i][0], sizeof(params[i][0]),
+                        params[i][1], sizeof(params[i][1])) < 0) {
+            printf("sendParamsRecord error\n");
+            return -1;
+        }
+    }
+
+    // 发送空的params参数
+    if (sendEmptyParamsRecord(rio_writen, sock, requestId) < 0) {
+        printf("sendEmptyParamsRecord error\n");
+        return -1;
+    }
+
+    FCGI_EndRequestRecord endr;
+    char *out, *err;
+    int outlen, errlen;
+
+    // 读取处理结果
+    if (recvResultRecord(rio_readn, sock, requestId, &out, &outlen, &err, &errlen, &endr) < 0) {
+        printf("recvResult error\n");
+        return -1;
+    }
+
+    if (outlen > 0) {
+        printf("------%d------\n", outlen);
+        printf("%s\n", out);
+    }
 
     return 0;
 }

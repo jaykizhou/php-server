@@ -1,6 +1,7 @@
 #ifndef __FASTCGI_H__
 #define __FASTCGI_H__
 #include <string.h>
+#include <stdlib.h>
 
 #define FCGI_MAX_LENGTH 0xFFFF          // 允许传输的最大数据长度65536
 #define FCGI_HOST       "127.0.0.1"     // php-fpm地址
@@ -89,7 +90,7 @@ typedef struct {
  */
 typedef struct {
     FCGI_Header header;
-    FCGI_EndRequestBody;
+    FCGI_EndRequestBody body;
 } FCGI_EndRequestRecord;
 
 typedef struct{
@@ -116,7 +117,7 @@ FCGI_BeginRequestBody makeBeginRequestBody(
         int keepConn);
 
 // 发送协议记录函数指针
-typedef int (*write_record)(int, void *, int); 
+typedef ssize_t (*write_record)(int, void *, size_t); 
 
 /*
  * 发送开始请求记录
@@ -156,14 +157,14 @@ int sendStdinRecord(
 int sendEmptyStdinRecord(write_record wr, int fd, int requestId);
 
 // 读取协议记录函数指针
-typedef int (*read_record)(int, void *, int); 
+typedef ssize_t (*read_record)(int, void *, size_t); 
 
 /*
  * 读取php-fpm处理结果
  */
-int recvResult(
-        read_record rr, 
-        int fd, 
+int recvResultRecord(
+        read_record rr,
+        int fd,
         int requestId,
         char **sout,
         int *outlen,

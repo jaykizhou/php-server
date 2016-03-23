@@ -208,7 +208,7 @@ int sendEmptyStdinRecord(write_record wr, int fd, int requestId)
  * 读取成功返回0
  * 出错返回-1
  */
-int recvResult(
+int recvResultRecord(
         read_record rr, 
         int fd, 
         int requestId,
@@ -226,7 +226,8 @@ int recvResult(
     *errlen = 0;
     // 读取协议记录头部
     while (rr(fd, &responHeader, FCGI_HEADER_LEN) > 0) {
-        if (responHeader.type == FCGI_STDOUT && responHeader.requestId == requestId) {
+        if (responHeader.type == FCGI_STDOUT && 
+                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
             // 获取内容长度
             cl = (int)(responHeader.contentLengthB1 << 8) + (int)responHeader.contentLengthB0;
             *outlen += cl;
@@ -252,7 +253,8 @@ int recvResult(
                     return -1;
                 }
             }
-        } else if (responHeader.type == FCGI_STDERR && responHeader.requestId == requestId) {
+        } else if (responHeader.type == FCGI_STDERR && 
+                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
             // 获取内容长度
             cl = (int)(responHeader.contentLengthB1 << 8) + (int)responHeader.contentLengthB0;
             *errlen += cl;
@@ -278,7 +280,8 @@ int recvResult(
                     return -1;
                 }
             }
-        } else if (responHeader.type == FCGI_END_REQUEST && responHeader.requestId == requestId) {
+        } else if (responHeader.type == FCGI_END_REQUEST && 
+                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
             // 读取结束请求协议体
             ret = rr(fd, endRequest, sizeof(FCGI_EndRequestBody));
 
@@ -288,5 +291,6 @@ int recvResult(
             return 0;
         }
     }
+    return 0;
 }
 
