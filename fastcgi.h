@@ -162,7 +162,7 @@ typedef ssize_t (*read_record)(int, void *, size_t);
 /*
  * 读取php-fpm处理结果
  */
-int recvResultRecord(
+int recvRecord(
         read_record rr,
         int fd,
         int requestId,
@@ -170,6 +170,7 @@ int recvResultRecord(
         int *outlen,
         char **serr,
         int *errlen,
-        FCGI_EndRequestRecord *endRequest);
+        FCGI_EndRequestBody *endRequest);
+
 
 #endif

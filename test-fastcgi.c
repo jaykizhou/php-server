@@ -30,7 +30,7 @@ int main()
 
     // 连接服务器
 	if(-1 == connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr))){
-        printf("error \n");
+        printf("sock error \n");
         exit(-1);
 	}
 
@@ -55,12 +55,12 @@ int main()
         return -1;
     }
 
-    FCGI_EndRequestRecord endr;
+    FCGI_EndRequestBody endr;
     char *out, *err;
     int outlen, errlen;
 
     // 读取处理结果
-    if (recvResultRecord(rio_readn, sock, requestId, &out, &outlen, &err, &errlen, &endr) < 0) {
+    if (recvRecord(rio_readn, sock, requestId, &out, &outlen, &err, &errlen, &endr) < 0) {
         printf("recvResult error\n");
         return -1;
     }

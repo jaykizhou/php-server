@@ -208,9 +208,9 @@ int sendEmptyStdinRecord(write_record wr, int fd, int requestId)
  * 读取成功返回0
  * 出错返回-1
  */
-int recvResultRecord(
-        read_record rr, 
-        int fd, 
+int recvRecord(
+        read_record rr,
+        int fd,
         int requestId,
         char **sout,
         int *outlen,
