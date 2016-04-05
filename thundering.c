@@ -28,6 +28,7 @@ struct slock *s_alloc(const char *name) {
     snprintf(sp->name, sizeof(sp->name), "%s", name);
 
     if ((sp->semp = sem_open(sp->name, O_CREAT, 0644, 1)) == SEM_FAILED) {
+        printf("sem_open error\n");
         free(sp);
         return NULL;
     }
@@ -73,7 +74,8 @@ int main(int argc, char *argv[]) {
     int sfd, efd, ret, i;
     struct epoll_event event;
     struct epoll_event *events;
-    struct slock *slockp;
+    //struct slock *slockp;
+    sem_t *sem;
     
     // 创建并绑定套接字
     sfd = create_and_bind(5555);
@@ -109,19 +111,20 @@ int main(int argc, char *argv[]) {
     // 创建用来接收有事件发生的events
     events = calloc(MAX_EVENTS, sizeof(event));
 
-    // 创建一个锁
-    slockp = s_alloc("thunder_epoll_lock");
-
     // 创建多个进程
     for (i = 0; i < PROCESS_NUM; i++) {
         int pid = fork();
 
         // 子进程
         if (pid == 0) {
+
+            // 创建一个锁
+            sem = sem_open("/thunder_epoll_lock", O_CREAT, 0644, 1);
+
             // 事件循环
             while (1) {
                 // 尝试获取锁
-                sem_wait(slockp->semp);
+                sem_wait(sem);
                 
                 int j, n;
                 n = epoll_wait(efd, events, MAX_EVENTS, -1);
@@ -150,8 +153,8 @@ int main(int argc, char *argv[]) {
                         close(infd);
 
                         // 释放锁
-                        sem_post(slockp->semp);
-                        sleep(1);
+                        sem_post(sem);
+                        //sleep(1);
                     }
                 }
             }
