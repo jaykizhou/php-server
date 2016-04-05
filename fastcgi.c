@@ -221,15 +221,16 @@ int recvRecord(
     FCGI_Header responHeader;
     char *conBuf = NULL, *errBuf = NULL;
     int buf[8], cl, ret;
+    int fcgi_rid;  // 保存fpm发送过来的request id 
 
     *outlen = 0;
     *errlen = 0;
     // 读取协议记录头部
     while (rr(fd, &responHeader, FCGI_HEADER_LEN) > 0) {
-        if (responHeader.type == FCGI_STDOUT && 
-                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
+        fcgi_rid = (int)(responHeader.requestIdB1 << 8) + (int)(responHeader.requestIdB0);
+        if (responHeader.type == FCGI_STDOUT && fcgi_rid == requestId) {
             // 获取内容长度
-            cl = (int)(responHeader.contentLengthB1 << 8) + (int)responHeader.contentLengthB0;
+            cl = (int)(responHeader.contentLengthB1 << 8) + (int)(responHeader.contentLengthB0);
             *outlen += cl;
 
             // 如果不是第一次读取FCGI_STDOUT记录
@@ -243,20 +244,21 @@ int recvRecord(
 
             ret = rr(fd, conBuf, cl);
             if (ret == -1 || ret != cl) {
+                printf("read fcgi_stdout record error\n");
                 return -1;
             }
 
             // 读取填充内容，忽略
             if (responHeader.paddingLength > 0) {
-                rr(fd, buf, responHeader.paddingLength);
+                ret = rr(fd, buf, responHeader.paddingLength);
                 if (ret == -1 || ret != responHeader.paddingLength) {
+                    printf("read fcgi_stdout padding error %d\n", responHeader.paddingLength);
                     return -1;
                 }
             }
-        } else if (responHeader.type == FCGI_STDERR && 
-                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
+        } else if (responHeader.type == FCGI_STDERR && fcgi_rid == requestId) {
             // 获取内容长度
-            cl = (int)(responHeader.contentLengthB1 << 8) + (int)responHeader.contentLengthB0;
+            cl = (int)(responHeader.contentLengthB1 << 8) + (int)(responHeader.contentLengthB0);
             *errlen += cl;
 
             // 如果不是第一次读取FCGI_STDOUT记录
@@ -275,13 +277,12 @@ int recvRecord(
 
             // 读取填充内容，忽略
             if (responHeader.paddingLength > 0) {
-                rr(fd, buf, responHeader.paddingLength);
+                ret = rr(fd, buf, responHeader.paddingLength);
                 if (ret == -1 || ret != responHeader.paddingLength) {
                     return -1;
                 }
             }
-        } else if (responHeader.type == FCGI_END_REQUEST && 
-                (int)(responHeader.requestIdB1 << 8 + responHeader.requestIdB0) == requestId) {
+        } else if (responHeader.type == FCGI_END_REQUEST && fcgi_rid == requestId) {
             // 读取结束请求协议体
             ret = rr(fd, endRequest, sizeof(FCGI_EndRequestBody));
 

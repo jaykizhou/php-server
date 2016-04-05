@@ -1,5 +1,6 @@
 #ifndef __FASTCGI_H__
 #define __FASTCGI_H__
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 

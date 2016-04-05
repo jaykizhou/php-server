@@ -3,16 +3,39 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+char *post_data = 
+"------WebKitFormBoundaryabcdefgh\r\n"
+"Content-Disposition: form-data; name=\"name\"\r\n"
+"\r\n"
+"a\r\n"
+"------WebKitFormBoundaryabcdefgh\r\n"
+"Content-Disposition: form-data; name=\"age\"\r\n"
+"\r\n"
+"12\r\n"
+"------WebKitFormBoundaryabcdefgh\r\n"
+"Content-Disposition: form-data; name=\"file\"; filename=\"test.txt\"\r\n"
+"Content-Type: text/plain\r\n"
+"\r\n"
+"123456789\r\n"
+"abcdef\r\n"
+"123456\r\n"
+"------WebKitFormBoundaryabcdefgh--\r\n"
+;
+
 int main() 
 {
 	int sock, i, requestId = 1;
 	struct sockaddr_in serv_addr;
 	char msg[20];
 
+    printf("post data lenght is 357: %d\n", strlen(post_data));
+
     char *params[][2] = {
         {"SCRIPT_FILENAME", "/home/zhou/php-server/test.php"},
-        {"REQUEST_METHOD", "GET"},
-        {"QUERY_STRING", "name=test"},
+        {"REQUEST_METHOD", "POST"},
+        //{"QUERY_STRING", "name=test"},
+        {"CONTENT_TYPE", "multipart/form-data;boundary=----WebKitFormBoundaryabcdefgh"},
+        {"CONTENT_LENGTH", "357"},
         {"",""}
     };
 
@@ -42,18 +65,33 @@ int main()
 
     // 发送params参数
     for (i = 0; params[i][0] != ""; i++) {
-        if (sendParamsRecord(rio_writen, sock, requestId, params[i][0], sizeof(params[i][0]),
-                        params[i][1], sizeof(params[i][1])) < 0) {
+        if (sendParamsRecord(rio_writen, sock, requestId, params[i][0], strlen(params[i][0]),
+                        params[i][1], strlen(params[i][1])) < 0) {
             printf("sendParamsRecord error\n");
             return -1;
         }
     }
+    printf("sendParamsRecord complete!\n");
 
     // 发送空的params参数
     if (sendEmptyParamsRecord(rio_writen, sock, requestId) < 0) {
         printf("sendEmptyParamsRecord error\n");
         return -1;
     }
+
+    // 发送stdin数据
+    if (sendStdinRecord(rio_writen, sock, requestId, post_data, strlen(post_data)) < 0) {
+        printf("sendStdinRecord error\n");
+        return -1;
+    }
+
+    // 发送空的stdin数据
+    if (sendEmptyStdinRecord(rio_writen, sock, requestId) < 0) {
+        printf("sendEmptyStdinRecord error\n");
+        return -1;
+    }
+
+    printf("sendEmptyRecord and Stdin complete!\n");
 
     FCGI_EndRequestBody endr;
     char *out, *err;
@@ -68,6 +106,11 @@ int main()
     if (outlen > 0) {
         printf("------%d------\n", outlen);
         printf("%s\n", out);
+    }
+
+    if (errlen > 0) {
+        printf("------%d------\n", errlen);
+        printf("%s\n", err);
     }
 
     return 0;

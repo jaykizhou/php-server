@@ -136,7 +136,7 @@ int main(int argc, char *argv[]){
 
     // 传递FCGI_PARAMS参数
     char *params[][2] = {
-        {"SCRIPT_FILENAME", "/home/shiyanlou/php-server/test.php"}, 
+        {"SCRIPT_FILENAME", "/home/zhou/php-server/test.php"}, 
         {"REQUEST_METHOD", "GET"}, 
         {"QUERY_STRING", "name=shiyanlou"}, 
         {"", ""}

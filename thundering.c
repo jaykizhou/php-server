@@ -120,11 +120,15 @@ int main(int argc, char *argv[]) {
 
             // 创建一个锁
             sem = sem_open("/thunder_epoll_lock", O_CREAT, 0644, 1);
+            if (sem == SEM_FAILED) {
+                printf("sem_open error, process %d\n", getpid());
+            }
 
             // 事件循环
             while (1) {
                 // 尝试获取锁
                 sem_wait(sem);
+                printf("process %d get lock!\n", getpid());
                 
                 int j, n;
                 n = epoll_wait(efd, events, MAX_EVENTS, -1);
