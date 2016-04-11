@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
             printf("process %d forked\n", getpid());
 
             // 创建一个锁
-            sem = sem_open("/thunder_epoll_lock_t5", O_CREAT, 0644, 1);
+            sem = sem_open("/thunder_epoll_lock_t1", O_CREAT, 0644, 1);
             if (sem == SEM_FAILED) {
                 printf("sem_open error, process %d\n", getpid());
             }
@@ -140,7 +140,8 @@ int main(int argc, char *argv[]) {
                     event.events = EPOLLIN;
                     if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event) < 0) {
                         printf("epoll_ctl error\n");
-                        sem_wait(sem);
+                        printf("\n%s\n", strerror(errno));
+                        sem_post(sem);
                         return -1;
                     }
                     printf("process %d epoll add\n", getpid());
@@ -171,6 +172,7 @@ int main(int argc, char *argv[]) {
                         infd = accept(sfd, &in_addr, &in_len);
                         if (infd == -1) {
                             printf("process %d accept failed!\n", getpid());
+                            printf("\n%s\n", strerror(errno));
                             sem_post(sem);
                             break;
                         }
