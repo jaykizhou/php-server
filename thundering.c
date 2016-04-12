@@ -98,14 +98,15 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    efd = epoll_create(MAX_EVENTS);
-    if (efd < 0) {
-        printf("epoll_create error\n");
-        return -1;
-    }
 
     // 创建用来接收有事件发生的events
     //events = calloc(MAX_EVENTS, sizeof(event));
+
+    // 创建一个锁
+    sem = sem_open("/thunder_epoll_lock_0000", O_CREAT, 0644, 1);
+    if (sem == SEM_FAILED) {
+        printf("sem_open error, process %d\n", getpid());
+    }
 
     // 创建多个进程
     for (i = 0; i < PROCESS_NUM; i++) {
@@ -114,13 +115,14 @@ int main(int argc, char *argv[]) {
         // 子进程
         if (pid == 0) {
 
-            printf("process %d forked\n", getpid());
-
-            // 创建一个锁
-            sem = sem_open("/thunder_epoll_lock_t1", O_CREAT, 0644, 1);
-            if (sem == SEM_FAILED) {
-                printf("sem_open error, process %d\n", getpid());
+            // 每个子进程创建自己的epoll fd
+            efd = epoll_create(MAX_EVENTS);
+            if (efd < 0) {
+                printf("epoll_create error\n");
+                return -1;
             }
+
+            printf("process %d forked\n", getpid());
 
             // 事件循环
             while (1) {
@@ -130,9 +132,11 @@ int main(int argc, char *argv[]) {
                  */
                 if (ln > 0) {
                     ls = sem_trywait(sem);
+                    printf("process %d get trywait lock\n", getpid());
                 } else {
                     // 阻塞等待锁
                     ls = sem_wait(sem);
+                    printf("process %d get wait lock\n", getpid());
                 }
 
                 if (ls == 0) {
@@ -168,11 +172,13 @@ int main(int argc, char *argv[]) {
                         struct sockaddr in_addr;
                         socklen_t in_len;
                         int infd;
+                        memset(&in_addr, 0, sizeof(struct sockaddr));
+                        in_len = 1;
 
                         infd = accept(sfd, &in_addr, &in_len);
                         if (infd == -1) {
                             printf("process %d accept failed!\n", getpid());
-                            printf("\n%s\n", strerror(errno));
+                            printf("\n%d : %s\n", errno, strerror(errno));
                             sem_post(sem);
                             break;
                         }
