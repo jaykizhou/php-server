@@ -1,3 +1,4 @@
+#include "mylock.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -11,30 +12,6 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <semaphore.h>
-
-#define LOCK_NAME_LEN 50
-struct slock {
-    sem_t *semp;
-    char name[LOCK_NAME_LEN];
-};
-
-struct slock *s_alloc(const char *name) {
-    struct slock *sp;
-    
-    if ((sp = malloc(sizeof(struct slock))) == NULL) {
-        return NULL;
-    }
-    
-    snprintf(sp->name, sizeof(sp->name), "%s", name);
-
-    if ((sp->semp = sem_open(sp->name, O_CREAT, 0644, 1)) == SEM_FAILED) {
-        printf("sem_open error\n");
-        free(sp);
-        return NULL;
-    }
-
-    return sp;
-}
 
 #define PROCESS_NUM 4
 #define MAX_EVENTS 64
@@ -69,16 +46,126 @@ static int set_socket_nonblock(int fd)
     return 0;
 }
 
-int main(int argc, char *argv[]) {
-
-    int sfd, efd, ret, i;
-    struct epoll_event event;
-    struct epoll_event events[MAX_EVENTS];
-    //struct slock *slockp;
-    sem_t *sem;
+// 子进程执行体
+int process_run(int sfd, slock *sl) {
+    int efd, ret, i;
     int ln = 0; // 连接数
     int ls = -1; // 锁函数的返回值
     char buf[100];
+
+    struct epoll_event event;
+    struct epoll_event events[MAX_EVENTS];
+
+    // 每个子进程创建自己的epoll fd
+    efd = epoll_create(MAX_EVENTS);
+    if (efd < 0) {
+        printf("epoll_create error\n");
+        return -1;
+    }
+
+    printf("process %d forked\n", getpid());
+
+    // 事件循环
+    while (1) {
+        /*
+         * 判断连接数是否为0，为0,阻塞等待
+         * 不为0,非阻塞等待锁
+         */
+        printf("process %d have %d connections\n", getpid(), ln);
+
+        if (ln > 0) {
+            ls = p(sl, 0);
+            printf("process %d get trywait lock\n", getpid());
+        } else {
+            // 阻塞等待锁
+            ls = p(sl, 1);
+            if (ls == -1) {
+                continue;
+            }
+            printf("process %d get wait lock\n", getpid());
+        }
+
+        if (ls == 0) {
+            // 获取到锁，将监听套接字sfd加入epoll中
+            event.data.fd = sfd;
+            event.events = EPOLLIN;
+            if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event) < 0) {
+                printf("epoll_ctl error\n");
+                printf("\n%s\n", strerror(errno));
+                v(sl);
+                return -1;
+            }
+            printf("process %d epoll add\n", getpid());
+        }
+
+        int j, n;
+        n = epoll_wait(efd, events, MAX_EVENTS, -1);
+        printf("process %d return from epoll_wait %d!\n", getpid(), n);
+
+        //sleep(1);
+        for (j = 0; j < n; j++) {
+            if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || 
+                    !(events[i].events & EPOLLIN)) {
+                printf("process %d epoll error\n", getpid());
+                printf("\n%d : %s\n", errno, strerror(errno));
+                close(events[i].data.fd);
+                if (ls == 0) {
+                    v(sl);
+                }
+            }
+            // 有连接请求
+            else if ((events[i].events & EPOLLIN) && (events[i].data.fd == sfd)) {
+                struct sockaddr in_addr;
+                socklen_t in_len;
+                int infd;
+                memset(&in_addr, 0, sizeof(struct sockaddr));
+                in_len = 1;
+
+                infd = accept(sfd, &in_addr, &in_len);
+                if (infd == -1) {
+                    printf("process %d accept failed!\n", getpid());
+                    printf("\n%d : %s\n", errno, strerror(errno));
+                    v(sl);
+                    continue;
+                }
+                ln++;
+                printf("process %d accept successed, accepted num: %d\n", getpid(), ln);
+
+                // 将接收的套接字加入监听队列
+                event.data.fd = infd;
+                event.events = EPOLLIN;
+                epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
+
+                // 删除sfd的监听
+                epoll_ctl(efd, EPOLL_CTL_DEL, sfd, NULL);
+
+                // 释放锁
+                v(sl);
+                //sleep(1);
+            }
+            // 有数据可读
+            else if (events[i].events & EPOLLIN) {
+                int n = read(events[i].data.fd, buf, 100);
+                buf[n] = '\0';
+                printf("process %d read : %s\n", getpid(), buf);
+
+                ln--;
+                epoll_ctl(efd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
+                close(events[i].data.fd);
+
+                if (!strcasecmp(buf, "bye")) {
+                    lock_close(sl);
+                    exit(0);
+                }
+            }
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
+
+    int sfd, i;
+    slock *sl;
     
     // 创建并绑定套接字
     sfd = create_and_bind(5555);
@@ -98,14 +185,11 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-
-    // 创建用来接收有事件发生的events
-    //events = calloc(MAX_EVENTS, sizeof(event));
-
     // 创建一个锁
-    sem = sem_open("/thunder_epoll_lock_0000", O_CREAT, 0644, 1);
-    if (sem == SEM_FAILED) {
-        printf("sem_open error, process %d\n", getpid());
+    sl = lock_init("/thundering-lock-2");
+    if (sl == NULL) {
+        printf("lock_init error\n");
+        return -1;
     }
 
     // 创建多个进程
@@ -114,111 +198,15 @@ int main(int argc, char *argv[]) {
 
         // 子进程
         if (pid == 0) {
-
-            // 每个子进程创建自己的epoll fd
-            efd = epoll_create(MAX_EVENTS);
-            if (efd < 0) {
-                printf("epoll_create error\n");
-                return -1;
-            }
-
-            printf("process %d forked\n", getpid());
-
-            // 事件循环
-            while (1) {
-                /*
-                 * 判断连接数是否为0，为0可以锁阻塞
-                 * 不为0,非阻塞等待锁
-                 */
-                if (ln > 0) {
-                    ls = sem_trywait(sem);
-                    printf("process %d get trywait lock\n", getpid());
-                } else {
-                    // 阻塞等待锁
-                    ls = sem_wait(sem);
-                    printf("process %d get wait lock\n", getpid());
-                }
-
-                if (ls == 0) {
-                    event.data.fd = sfd;
-                    event.events = EPOLLIN;
-                    if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event) < 0) {
-                        printf("epoll_ctl error\n");
-                        printf("\n%s\n", strerror(errno));
-                        sem_post(sem);
-                        return -1;
-                    }
-                    printf("process %d epoll add\n", getpid());
-                }
-
-                // 尝试获取锁
-                //sem_wait(sem);
-                //printf("process %d get lock!\n", getpid());
-
-                int j, n;
-                n = epoll_wait(efd, events, MAX_EVENTS, -1);
-                printf("process %d return from epoll_wait %d!\n", getpid(), n);
-
-                //sleep(1);
-                for (j = 0; j < n; j++) {
-                    if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || 
-                            !(events[i].events & EPOLLIN)) {
-                        printf("process %d epoll error\n", getpid());
-                        close(events[i].data.fd);
-                        continue;
-                    }
-                    // 有连接请求
-                    else if ((events[i].events & EPOLLIN) && (events[i].data.fd == sfd)) {
-                        struct sockaddr in_addr;
-                        socklen_t in_len;
-                        int infd;
-                        memset(&in_addr, 0, sizeof(struct sockaddr));
-                        in_len = 1;
-
-                        infd = accept(sfd, &in_addr, &in_len);
-                        if (infd == -1) {
-                            printf("process %d accept failed!\n", getpid());
-                            printf("\n%d : %s\n", errno, strerror(errno));
-                            sem_post(sem);
-                            break;
-                        }
-                        ln++;
-                        printf("process %d accept successed, accepted num: %d\n", getpid(), ln);
-
-                        // 将接收的套接字加入监听队列
-                        event.data.fd = infd;
-                        event.events = EPOLLIN;
-                        epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
-
-                        //close(infd);
-
-                        // 删除sfd的监听
-                        epoll_ctl(efd, EPOLL_CTL_DEL, sfd, NULL);
-
-                        // 释放锁
-                        sem_post(sem);
-                        //sleep(1);
-                    }
-                    // 有数据可读
-                    else if (events[i].events & EPOLLIN) {
-                        int n = read(events[i].data.fd, buf, 100);
-                        buf[n] = '\0';
-                        printf("process %d read : %s\n", getpid(), buf);
-
-                        ln--;
-                        epoll_ctl(efd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
-                        close(events[i].data.fd);
-                    }
-                }
-            }
+            process_run(sfd, sl);
         }
     }
 
     int status;
     wait(&status);
-    //free(events);
     close(sfd);
-    sem_close(sem);
+    lock_close(sl);
+
     return 0;
 }
 

@@ -2,10 +2,8 @@
 #define _MYLOCK_H__
 
 #define LOCK_NAME_LEN 80
-typedef struct _slock {
-    sem_t *semp;
-    char name[LOCK_NAME_LEN];
-} slock;
+
+typedef struct _slock slock;
 
 slock * lock_init(const char *name);
 int p(slock *sl, int wait);
