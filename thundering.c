@@ -73,48 +73,69 @@ int process_run(int sfd, slock *sl) {
          */
         printf("process %d have %d connections\n", getpid(), ln);
 
-        if (ln > 0) {
-            ls = p(sl, 0);
-            printf("process %d get trywait lock\n", getpid());
-        } else {
-            // 阻塞等待锁
-            ls = p(sl, 1);
-            if (ls == -1) {
-                continue;
+        // 判断是否已经获得了锁
+        if (ls == -1) { // 未获得锁
+            if (ln > 0) {
+                ls = p(sl, 0);
+                printf("process %d get trywait lock\n", getpid());
+            } else {
+                // 阻塞等待锁
+                ls = p(sl, 1);
+                if (ls == -1) {
+                    continue;
+                }
+                printf("process %d get wait lock\n", getpid());
             }
-            printf("process %d get wait lock\n", getpid());
-        }
 
-        if (ls == 0) {
-            // 获取到锁，将监听套接字sfd加入epoll中
-            event.data.fd = sfd;
-            event.events = EPOLLIN;
-            if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event) < 0) {
-                printf("epoll_ctl error\n");
-                printf("\n%s\n", strerror(errno));
-                v(sl);
-                return -1;
+            if (ls == 0) {
+                // 获取到锁，将监听套接字sfd加入epoll中
+                event.data.fd = sfd;
+                event.events = EPOLLIN;
+                if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event) < 0) {
+                    printf("epoll_ctl error\n");
+                    printf("\n%s\n", strerror(errno));
+                    v(sl);
+                    ls = -1;
+                    if (ln == 0) {
+                        continue;
+                    }
+                }
+                printf("process %d epoll add sfd : %d\n", getpid(), sfd);
             }
-            printf("process %d epoll add\n", getpid());
         }
 
         int j, n;
         n = epoll_wait(efd, events, MAX_EVENTS, -1);
+        if (n < 1) {
+            printf("epoll wait error\n");
+            return -1;
+        }
         printf("process %d return from epoll_wait %d!\n", getpid(), n);
 
         //sleep(1);
         for (j = 0; j < n; j++) {
-            if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || 
-                    !(events[i].events & EPOLLIN)) {
+
+            if ((events[j].events & EPOLLERR) || (events[j].events & EPOLLHUP) || 
+                    !(events[j].events & EPOLLIN)) {
                 printf("process %d epoll error\n", getpid());
                 printf("\n%d : %s\n", errno, strerror(errno));
-                close(events[i].data.fd);
+
+                // 从epoll删除该监听套接字
+                epoll_ctl(efd, EPOLL_CTL_DEL, events[j].data.fd, NULL);
+
+                // 关闭该套接字
+                if (events[j].data.fd != sfd) {
+                    close(events[j].data.fd);
+                }
+
+                // 释放锁
                 if (ls == 0) {
                     v(sl);
+                    ls = -1;
                 }
             }
             // 有连接请求
-            else if ((events[i].events & EPOLLIN) && (events[i].data.fd == sfd)) {
+            else if ((events[j].events & EPOLLIN) && (events[j].data.fd == sfd)) {
                 struct sockaddr in_addr;
                 socklen_t in_len;
                 int infd;
@@ -141,17 +162,18 @@ int process_run(int sfd, slock *sl) {
 
                 // 释放锁
                 v(sl);
+                ls = -1;
                 //sleep(1);
             }
             // 有数据可读
-            else if (events[i].events & EPOLLIN) {
-                int n = read(events[i].data.fd, buf, 100);
+            else if (events[j].events & EPOLLIN) {
+                int n = read(events[j].data.fd, buf, 100);
                 buf[n] = '\0';
                 printf("process %d read : %s\n", getpid(), buf);
 
                 ln--;
-                epoll_ctl(efd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
-                close(events[i].data.fd);
+                epoll_ctl(efd, EPOLL_CTL_DEL, events[j].data.fd, NULL);
+                close(events[j].data.fd);
 
                 if (!strcasecmp(buf, "bye")) {
                     lock_close(sl);

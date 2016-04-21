@@ -217,7 +217,7 @@ void get_filetype(char *filename, char *filetype)
 /*
  * 处理动态文件请求
  */
-void serve_dynamic(int fd, hht_t *hp)
+void serve_dynamic(int fd, hhr_t *hp)
 {
     //....
 }
