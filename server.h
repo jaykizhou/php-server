@@ -21,6 +21,7 @@ typedef struct http_header hhr_t;
 
 #define LISTENQ 1024 // listen函数的第二个参数
 int open_listenfd(int port);
+int open_clientfd();
 
 #define PORT 8000 // 默认端口号
 
@@ -53,6 +54,12 @@ void clienterror(int fd, char *cause, char *errnum,
         char *shortmsg, char *longmsg);
 
 // 将str前n个字符转换为小写
-void strtolow(char *str, int n);
+static void strtolow(char *str, int n);
+
+// 判断str起始位置开始是否包含"content-type"
+static int is_contype(char *str);
+
+// 判断str起始位置开始是否包含"content-length"
+static int is_conlength(char *str);
 
 #endif

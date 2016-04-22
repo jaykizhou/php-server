@@ -1,4 +1,5 @@
 #include "rio.h"
+#include "fastcgi.h"
 #include "server.h"
 
 /*
@@ -13,7 +14,7 @@ struct http_header {
     char filename[256];     // 请求文件名
     char cgiargs[256];      // 查询参数
     char contype[256];      // 请求体类型
-    unsigned int conlength; // 请求体长度
+    char conlength[16];     // 请求体长度
 };
 
 /*
@@ -26,6 +27,8 @@ void doit(int fd)
     char buf[MAXLINE];
     hhr_t hhr;
     rio_t rio;
+
+	memset(&hhr, 0, sizeof(hhr));
 
     // 读取请求行
     rio_readinitb(&rio, fd);
@@ -79,7 +82,7 @@ void doit(int fd)
  * 如果是GET请求，则简单忽略
  * 如果是POST请求，则提取请求体类型和长度
  */
-void read_requesthdrs(rio_t *rp, hht_t *hp)
+void read_requesthdrs(rio_t *rp, hhr_t *hp)
 {
     char buf[MAXLINE];
     char *start, *end;
@@ -95,9 +98,9 @@ void read_requesthdrs(rio_t *rp, hht_t *hp)
         *end = '\0';
 
         if (is_contype(buf)) {
-            strcpy(hp->contype, p + 1);
+            strcpy(hp->contype, start + 1);
         } else if (is_conlength(buf)) {
-            strcpy(hp->conlength, p + 1);
+            strcpy(hp->conlength, start + 1);
         }
 
         memset(buf, 0, MAXLINE);
@@ -119,6 +122,8 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
     char *ptr, *query;;                                   
     char urin[LOCALBUF];
     char *delim = ".php"; // 根据后缀名判断是静态页面还是动态页面
+    char cwd[LOCALBUF];
+    char *dir;
 
     strcpy(urin, uri); // 不破坏原始字符串
 
@@ -151,7 +156,8 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
                 *(query + sizeof(delim)) = '\0';
             }
         }                                                          
-        strcpy(filename, ".");                                        
+        dir = getcwd(cwd, LOCALBUF); // 获取当前工作目录
+        strcpy(filename, dir);                                        
         strcat(filename, urin);                                   
         return 0;                                               
     }                                                              
@@ -217,9 +223,134 @@ void get_filetype(char *filename, char *filetype)
 /*
  * 处理动态文件请求
  */
-void serve_dynamic(int fd, hhr_t *hp)
+void serve_dynamic(int fd, hhr_t *hp) {
+    int sock; 
+
+    // 创建一个连接到fastcgi服务器的套接字
+    sock = open_clientfd();
+
+    // 发送http请求数据
+    send_fastcgi(fd, hp, sock);
+
+    // 接收处理结果
+    recv_fastcgi(fd, sock);
+
+    close(sock); // 关闭与fastcgi服务器连接的套接字
+}
+
+/*
+ * 接收fastcgi返回的数据
+ */
+int recv_fastcgi(int fd, int sock) {
+    int requestId;
+    char *p;
+    int n;
+
+    FCGI_EndRequestBody endr;
+    char *out, *err;
+    int outlen, errlen;
+
+    requestId = sock;
+
+    // 读取处理结果
+    if (recvRecord(rio_readn, sock, requestId, &out, &outlen, &err, &errlen, &endr) < 0) {
+        error_log("recvRecord error", DEBUGARGS);
+        return -1;
+    }
+
+    if (outlen > 0) {
+        p = index(out, '\r'); 
+        n = (int)(p - out);
+        rio_writen(fd, p + 3, outlen - n - 3);
+        free(out);
+    }
+
+    if (errlen > 0) {
+        rio_writen(fd, err, errlen);
+        free(err);
+    }
+
+    return 0;
+}
+
+/*
+ * 发送http请求行和请求体数据给fastcgi服务器
+ */
+int send_fastcgi(int fd, hhr_t *hp, int sock)
 {
-    //....
+    int requestId, i, l; 
+    char *buf;
+
+    requestId = sock;
+
+    // params参数名
+    char *paname[] = {
+        "SCRIPT_FILENAME",
+        "REQUEST_METHOD",
+        "QUERY_STRING",
+        "CONTENT_TYPE",
+        "CONTENT_LENGTH"
+    };
+
+    // 对应上面params参数名，具体参数值所在hhr_t结构体中的偏移
+    int paoffset[] = {
+        (size_t) & (((hhr_t *)0)->filename),
+        (size_t) & (((hhr_t *)0)->method),
+        (size_t) & (((hhr_t *)0)->cgiargs),
+        (size_t) & (((hhr_t *)0)->contype),
+        (size_t) & (((hhr_t *)0)->conlength)
+    };
+
+    // 发送开始请求记录
+    if (sendBeginRequestRecord(rio_writen, sock, requestId) < 0) {
+        error_log("sendBeginRequestRecord error", DEBUGARGS);
+        return -1;
+    }
+
+    // 发送params参数
+    l = sizeof(paoffset) / sizeof(paoffset[0]);
+    for (i = 0; i < l; i++) {
+        // params参数的值不为空才发送
+        if (strlen((char *)(((int)hp) + paoffset[i])) > 0) {
+            if (sendParamsRecord(rio_writen, sock, requestId, paname[i], strlen(paname[i]),
+                        (char *)(((int)hp) + paoffset[i]), 
+                        strlen((char *)(((int)hp) + paoffset[i]))) < 0) {
+                error_log("sendParamsRecord error", DEBUGARGS);
+                return -1;
+            }
+        }
+    }
+
+    // 发送空的params参数
+    if (sendEmptyParamsRecord(rio_writen, sock, requestId) < 0) {
+        error_log("sendEmptyParamsRecord error", DEBUGARGS);
+        return -1;
+    }
+
+    // 继续读取请求体数据
+    l = atoi(hp->conlength);
+    if (l > 0) { // 请求体大小大于0
+        buf = (char *)malloc(l + 1);
+        memset(buf, 0, l);
+        if (rio_readn(fd, buf, l) < 0) {
+            error_log("rio_readn error", DEBUGARGS);
+            return -1;
+        }
+
+        // 发送stdin数据
+        if (sendStdinRecord(rio_writen, sock, requestId, buf, l) < 0) {
+            error_log("sendStdinRecord error", DEBUGARGS);
+            return -1;
+        }
+
+        free(buf);
+    }
+
+    // 发送空的stdin数据
+    if (sendEmptyStdinRecord(rio_writen, sock, requestId) < 0) {
+        error_log("sendEmptyStdinRecord error", DEBUGARGS);
+        return -1;
+    }
 }
 
 /*
@@ -258,6 +389,35 @@ int open_listenfd(int port)
     }
 
     return listenfd;
+}
+
+/*
+ * 创建连接fastcgi服务器的客户端套接字
+ * 出错返回-1
+ */
+int open_clientfd() {
+    int sock;
+	struct sockaddr_in serv_addr;
+
+    // 创建套接字
+	sock = socket(PF_INET, SOCK_STREAM, 0);
+	if (-1 == sock) {
+        error_log("socket error", DEBUGARGS);
+        return -1;
+	}
+
+	memset(&serv_addr, 0, sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = inet_addr(FCGI_HOST);
+	serv_addr.sin_port = htons(FCGI_PORT);
+
+    // 连接服务器
+	if(-1 == connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr))){
+        error_log("connect error", DEBUGARGS);
+        return -1;
+	}
+
+    return sock;
 }
 
 void clienterror(int fd, char *cause, char *errnum,
