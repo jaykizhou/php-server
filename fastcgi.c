@@ -210,36 +210,44 @@ int sendEmptyStdinRecord(write_record wr, int fd, int requestId)
  */
 int recvRecord(
         read_record rr,
+        send_to_client stc,
+        int cfd,
         int fd,
-        int requestId,
+        int requestId/*,
         char **sout,
         int *outlen,
         char **serr,
         int *errlen,
-        FCGI_EndRequestBody *endRequest)
+        FCGI_EndRequestBody *endRequest*/)
 {
     FCGI_Header responHeader;
+    FCGI_EndRequestBody endr;
     char *conBuf = NULL, *errBuf = NULL;
     int buf[8], cl, ret;
     int fcgi_rid;  // 保存fpm发送过来的request id 
 
-    *outlen = 0;
-    *errlen = 0;
+    int outlen = 0, errlen = 0;
+
+    //*outlen = 0;
+    //*errlen = 0;
+
     // 读取协议记录头部
     while (rr(fd, &responHeader, FCGI_HEADER_LEN) > 0) {
         fcgi_rid = (int)(responHeader.requestIdB1 << 8) + (int)(responHeader.requestIdB0);
         if (responHeader.type == FCGI_STDOUT && fcgi_rid == requestId) {
             // 获取内容长度
             cl = (int)(responHeader.contentLengthB1 << 8) + (int)(responHeader.contentLengthB0);
-            *outlen += cl;
+            //*outlen += cl;
+            outlen += cl;
 
             // 如果不是第一次读取FCGI_STDOUT记录
             if (conBuf != NULL) { 
                 // 扩展空间
-                conBuf = realloc(*sout, *outlen);
+                //conBuf = realloc(*sout, *outlen);
+                conBuf = realloc(conBuf, outlen);
             } else {
                 conBuf = (char *)malloc(cl);
-                *sout = conBuf;
+                //*sout = conBuf;
             }
 
             ret = rr(fd, conBuf, cl);
@@ -259,15 +267,16 @@ int recvRecord(
         } else if (responHeader.type == FCGI_STDERR && fcgi_rid == requestId) {
             // 获取内容长度
             cl = (int)(responHeader.contentLengthB1 << 8) + (int)(responHeader.contentLengthB0);
-            *errlen += cl;
+            //*errlen += cl;
+            errlen += cl;
 
             // 如果不是第一次读取FCGI_STDOUT记录
             if (errBuf != NULL) { 
                 // 扩展空间
-                errBuf = realloc(*serr, *errlen);
+                errBuf = realloc(errBuf, errlen);
             } else {
                 errBuf = (char *)malloc(cl);
-                *serr = errBuf;
+                //*serr = errBuf;
             }
 
             ret = rr(fd, errBuf, cl);
@@ -284,11 +293,17 @@ int recvRecord(
             }
         } else if (responHeader.type == FCGI_END_REQUEST && fcgi_rid == requestId) {
             // 读取结束请求协议体
-            ret = rr(fd, endRequest, sizeof(FCGI_EndRequestBody));
+            ret = rr(fd, &endr, sizeof(FCGI_EndRequestBody));
 
             if (ret == -1 || ret != sizeof(FCGI_EndRequestBody)) {
+                free(conBuf);
+                free(errBuf);
                 return -1;
             }
+
+            stc(cfd, outlen, conBuf, errlen, errBuf, &endr);
+            free(conBuf);
+            free(errBuf);
             return 0;
         }
     }

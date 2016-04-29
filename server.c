@@ -11,7 +11,8 @@ struct http_header {
     char uri[256];          // 请求地址
     char method[16];        // 请求方法
     char version[16];       // 协议版本
-    char filename[256];     // 请求文件名
+    char filename[256];     // 请求文件名(包含完整路径)
+    char name[256];         // 请求文件名(不包含路径，只有文件名)
     char cgiargs[256];      // 查询参数
     char contype[256];      // 请求体类型
     char conlength[16];     // 请求体长度
@@ -29,6 +30,7 @@ void doit(int fd)
     rio_t rio;
 
 	memset(&hhr, 0, sizeof(hhr));
+	memset(buf, 0, MAXLINE);
 
     // 读取请求行
     rio_readinitb(&rio, fd);
@@ -50,7 +52,7 @@ void doit(int fd)
     read_requesthdrs(&rio, &hhr);
 
     // 分析请求uri，获得具体请求文件名和请求参数
-    is_static = parse_uri(hhr.uri, hhr.filename, hhr.cgiargs);
+    is_static = parse_uri(hhr.uri, hhr.filename, hhr.name, hhr.cgiargs);
 
     // 判断请求文件是否存在
     if (stat(hhr.filename, &sbuf) < 0) {
@@ -88,23 +90,30 @@ void read_requesthdrs(rio_t *rp, hhr_t *hp)
     char *start, *end;
 
     memset(buf, 0, MAXLINE);
-    rio_readlineb(rp, buf, MAXLINE);
+    if (rio_readlineb(rp, buf, MAXLINE) < 0) {
+        error_log("rio_readlineb error", DEBUGARGS);
+    }
 
     while (strcmp(buf, "\r\n")) {
 
         start = index(buf, ':');
         // 每行数据包含\r\n字符，需要删除
         end = index(buf, '\r');
-        *end = '\0';
 
-        if (is_contype(buf)) {
-            strcpy(hp->contype, start + 1);
-        } else if (is_conlength(buf)) {
-            strcpy(hp->conlength, start + 1);
+        if (start != 0 && end != 0) {
+            *end = '\0';
+
+            if (is_contype(buf)) {
+                strcpy(hp->contype, start + 1);
+            } else if (is_conlength(buf)) {
+                strcpy(hp->conlength, start + 1);
+            }
         }
 
         memset(buf, 0, MAXLINE);
-        rio_readlineb(rp, buf, MAXLINE);
+        if (rio_readlineb(rp, buf, MAXLINE) < 0) {
+            error_log("rio_readlineb error", DEBUGARGS);
+        }
     }
 
     return ;
@@ -117,7 +126,7 @@ void read_requesthdrs(rio_t *rp, hhr_t *hp)
  * 默认的服务器根目录就是程序所在目录
  * 默认页面是index.html
  */
-int parse_uri(char *uri, char *filename, char *cgiargs) 
+int parse_uri(char *uri, char *filename, char *name, char *cgiargs) 
 {                                                        
     char *ptr, *query;;                                   
     char urin[LOCALBUF];
@@ -157,8 +166,9 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
             }
         }                                                          
         dir = getcwd(cwd, LOCALBUF); // 获取当前工作目录
-        strcpy(filename, dir);                                        
+        strcpy(filename, dir);       // 包含完整路径名                                   
         strcat(filename, urin);                                   
+        strcpy(name, urin);         // 不包含完整路径名
         return 0;                                               
     }                                                              
 }
@@ -246,6 +256,15 @@ int recv_fastcgi(int fd, int sock) {
     char *p;
     int n;
 
+    requestId = sock;
+
+    // 读取处理结果
+    if (recvRecord(rio_readn, send_to_cli, fd, sock, requestId) < 0) {
+        error_log("recvRecord error", DEBUGARGS);
+        return -1;
+    }
+
+    /*
     FCGI_EndRequestBody endr;
     char *out, *err;
     int outlen, errlen;
@@ -269,8 +288,36 @@ int recv_fastcgi(int fd, int sock) {
         rio_writen(fd, err, errlen);
         free(err);
     }
+    */
 
     return 0;
+}
+
+/*
+ * php处理结果发送给客户端
+ */
+int send_to_cli(int fd, int outlen, char *out, 
+        int errlen, char *err, FCGI_EndRequestBody *endr
+        ) 
+{
+    char *p;
+    int n;
+
+    if (outlen > 0) {
+        p = index(out, '\r'); 
+        n = (int)(p - out);
+        if (rio_writen(fd, p + 3, outlen - n - 3) < 0) {
+            error_log("rio_written error", DEBUGARGS);
+            return -1;
+        }
+    }
+
+    if (errlen > 0) {
+        if (rio_writen(fd, err, errlen) < 0) {
+            error_log("rio_written error", DEBUGARGS);
+            return -1;
+        }
+    }
 }
 
 /*
@@ -286,7 +333,9 @@ int send_fastcgi(int fd, hhr_t *hp, int sock)
     // params参数名
     char *paname[] = {
         "SCRIPT_FILENAME",
+        "SCRIPT_NAME",
         "REQUEST_METHOD",
+        "REQUEST_URI",
         "QUERY_STRING",
         "CONTENT_TYPE",
         "CONTENT_LENGTH"
@@ -295,7 +344,9 @@ int send_fastcgi(int fd, hhr_t *hp, int sock)
     // 对应上面params参数名，具体参数值所在hhr_t结构体中的偏移
     int paoffset[] = {
         (size_t) & (((hhr_t *)0)->filename),
+        (size_t) & (((hhr_t *)0)->name),
         (size_t) & (((hhr_t *)0)->method),
+        (size_t) & (((hhr_t *)0)->uri),
         (size_t) & (((hhr_t *)0)->cgiargs),
         (size_t) & (((hhr_t *)0)->contype),
         (size_t) & (((hhr_t *)0)->conlength)

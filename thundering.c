@@ -12,9 +12,12 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <semaphore.h>
+#include <signal.h>
 
 #define PROCESS_NUM 4
 #define MAX_EVENTS 64
+
+slock *sl;
 
 static int create_and_bind(int port)
 {
@@ -46,8 +49,24 @@ static int set_socket_nonblock(int fd)
     return 0;
 }
 
+// 信号处理函数
+void sig_handler(int sig)
+{
+    lock_close(sl);
+}
+
+// 设置信号的处理函数
+void addsig(int sig)
+{
+    struct sigaction sa;
+    memset(&sa, '\0', sizeof(sa));
+    sa.sa_handler = sig_handler;
+    sigaction(sig, &sa, NULL);
+}
+
 // 子进程执行体
-int process_run(int sfd, slock *sl) {
+int process_run(int sfd, slock *sl) 
+{
     int efd, ret, i;
     int ln = 0; // 连接数
     int ls = -1; // 锁函数的返回值
@@ -184,10 +203,11 @@ int process_run(int sfd, slock *sl) {
     }
 }
 
+
 int main(int argc, char *argv[]) {
 
     int sfd, i;
-    slock *sl;
+    //slock *sl;
     
     // 创建并绑定套接字
     sfd = create_and_bind(5555);
@@ -208,11 +228,12 @@ int main(int argc, char *argv[]) {
     }
 
     // 创建一个锁
-    sl = lock_init("/thundering-lock-2");
+    sl = lock_init("/thundering-lock-4");
     if (sl == NULL) {
         printf("lock_init error\n");
         return -1;
     }
+
 
     // 创建多个进程
     for (i = 0; i < PROCESS_NUM; i++) {
@@ -224,10 +245,13 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // 设置信号处理函数
+    addsig(SIGINT);
+
     int status;
     wait(&status);
     close(sfd);
-    lock_close(sl);
+    //lock_close(sl);
 
     return 0;
 }

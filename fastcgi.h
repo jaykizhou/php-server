@@ -94,12 +94,12 @@ typedef struct {
     FCGI_EndRequestBody body;
 } FCGI_EndRequestRecord;
 
-typedef struct{
+typedef struct {
 	FCGI_Header header;
 	unsigned char nameLength;
 	unsigned char valueLength;
 	unsigned char data[0];
-}FCGI_ParamsRecord;
+} FCGI_ParamsRecord;
 
 /*
  * 构造协议记录头部
@@ -160,18 +160,23 @@ int sendEmptyStdinRecord(write_record wr, int fd, int requestId);
 // 读取协议记录函数指针
 typedef ssize_t (*read_record)(int, void *, size_t); 
 
+// 发送php结果给客户端回调函数声明
+typedef ssize_t (*send_to_client)(int, int, char *, int, char *, FCGI_EndRequestBody *);
+
 /*
  * 读取php-fpm处理结果
  */
 int recvRecord(
         read_record rr,
+        send_to_client stc,
+        int cfd,
         int fd,
-        int requestId,
+        int requestId/*,
         char **sout,
         int *outlen,
         char **serr,
         int *errlen,
-        FCGI_EndRequestBody *endRequest);
+        FCGI_EndRequestBody *endRequest*/);
 
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef __SERVER_H__
 #define __SERVER_H__
 #include "rio.h"
+#include "fastcgi.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,7 +36,7 @@ void doit(int fd); // 处理一个http事务
 void read_requesthdrs(rio_t *rp, hhr_t *hp); // 读取请求行
 
 // 分析uri
-int parse_uri(char *uri, char *filename, char *cgiargs);
+int parse_uri(char *uri, char *filename, char *name, char *cgiargs);
 
 // 静态文件请求处理
 void serve_static(int fd, char *filename, int filesize);
@@ -52,6 +53,11 @@ void serve_dynamic(int fd, hhr_t *hp);
  */
 void clienterror(int fd, char *cause, char *errnum,
         char *shortmsg, char *longmsg);
+
+// 将php结果发送给客户端的回调函数
+int send_to_cli(int fd, int outlen, char *out, 
+        int errlen, char *err, FCGI_EndRequestBody *endr
+        );
 
 // 将str前n个字符转换为小写
 static void strtolow(char *str, int n);
