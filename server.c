@@ -75,7 +75,7 @@ void doit(int fd)
             clienterror(fd, hhr.filename, "403", "Forbidden",
                     "Zhou couldn't run the CGI program");
         }
-        serve_dynamic(fd, &hhr);
+        serve_dynamic(&rio, &hhr);
     }
 }
 
@@ -102,6 +102,9 @@ void read_requesthdrs(rio_t *rp, hhr_t *hp)
 
         if (start != 0 && end != 0) {
             *end = '\0';
+            while ((*(start + 1)) == ' ') {
+                start++;
+            }
 
             if (is_contype(buf)) {
                 strcpy(hp->contype, start + 1);
@@ -233,17 +236,17 @@ void get_filetype(char *filename, char *filetype)
 /*
  * 处理动态文件请求
  */
-void serve_dynamic(int fd, hhr_t *hp) {
+void serve_dynamic(rio_t *rp, hhr_t *hp) {
     int sock; 
 
     // 创建一个连接到fastcgi服务器的套接字
     sock = open_clientfd();
 
     // 发送http请求数据
-    send_fastcgi(fd, hp, sock);
+    send_fastcgi(rp, hp, sock);
 
     // 接收处理结果
-    recv_fastcgi(fd, sock);
+    recv_fastcgi(rp->rio_fd, sock);
 
     close(sock); // 关闭与fastcgi服务器连接的套接字
 }
@@ -323,7 +326,7 @@ int send_to_cli(int fd, int outlen, char *out,
 /*
  * 发送http请求行和请求体数据给fastcgi服务器
  */
-int send_fastcgi(int fd, hhr_t *hp, int sock)
+int send_fastcgi(rio_t *rp, hhr_t *hp, int sock)
 {
     int requestId, i, l; 
     char *buf;
@@ -382,15 +385,17 @@ int send_fastcgi(int fd, hhr_t *hp, int sock)
     l = atoi(hp->conlength);
     if (l > 0) { // 请求体大小大于0
         buf = (char *)malloc(l + 1);
-        memset(buf, 0, l);
-        if (rio_readn(fd, buf, l) < 0) {
+        memset(buf, '\0', l);
+        if (rio_readnb(rp, buf, l) < 0) {
             error_log("rio_readn error", DEBUGARGS);
+            free(buf);
             return -1;
         }
 
         // 发送stdin数据
         if (sendStdinRecord(rio_writen, sock, requestId, buf, l) < 0) {
             error_log("sendStdinRecord error", DEBUGARGS);
+            free(buf);
             return -1;
         }
 
@@ -402,6 +407,8 @@ int send_fastcgi(int fd, hhr_t *hp, int sock)
         error_log("sendEmptyStdinRecord error", DEBUGARGS);
         return -1;
     }
+
+    return 0;
 }
 
 /*

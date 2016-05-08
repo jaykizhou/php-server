@@ -1,5 +1,5 @@
-#include "rio.h"
-#include "fastcgi.h"
+#include "../rio.h"
+#include "../fastcgi.h"
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
@@ -22,6 +22,31 @@ char *post_data =
 "------WebKitFormBoundaryabcdefgh--\r\n"
 ;
 
+/*
+ * php处理结果发送给客户端
+ */
+int send_to_cli(int fd, int outlen, char *out, 
+        int errlen, char *err, FCGI_EndRequestBody *endr
+        ) 
+{
+    char *p;
+    int n;
+
+    if (outlen > 0) {
+        p = index(out, '\r'); 
+        n = (int)(p - out);
+        if (rio_writen(fd, p + 3, outlen - n - 3) < 0) {
+            return -1;
+        }
+    }
+
+    if (errlen > 0) {
+        if (rio_writen(fd, err, errlen) < 0) {
+            return -1;
+        }
+    }
+}
+
 int main() 
 {
 	int sock, i, requestId = 1;
@@ -31,7 +56,7 @@ int main()
     printf("post data lenght is 357: %d\n", strlen(post_data));
 
     char *params[][2] = {
-        {"SCRIPT_FILENAME", "/home/zhou/php-server/test.php"},
+        {"SCRIPT_FILENAME", "/home/zhou/php-server/test/test.php"},
         {"REQUEST_METHOD", "POST"},
         //{"QUERY_STRING", "name=test"},
         {"CONTENT_TYPE", "multipart/form-data;boundary=----WebKitFormBoundaryabcdefgh"},
@@ -93,24 +118,9 @@ int main()
 
     printf("sendEmptyRecord and Stdin complete!\n");
 
-    FCGI_EndRequestBody endr;
-    char *out, *err;
-    int outlen, errlen;
-
     // 读取处理结果
-    if (recvRecord(rio_readn, sock, requestId, &out, &outlen, &err, &errlen, &endr) < 0) {
-        printf("recvResult error\n");
+    if (recvRecord(rio_readn, send_to_cli, 1, sock, requestId) < 0) {
         return -1;
-    }
-
-    if (outlen > 0) {
-        printf("------%d------\n", outlen);
-        printf("%s\n", out);
-    }
-
-    if (errlen > 0) {
-        printf("------%d------\n", errlen);
-        printf("%s\n", err);
     }
 
     return 0;

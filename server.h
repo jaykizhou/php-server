@@ -4,6 +4,7 @@
 #include "fastcgi.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -45,7 +46,7 @@ void serve_static(int fd, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
 
 // 动态文件请求处理
-void serve_dynamic(int fd, hhr_t *hp);
+void serve_dynamic(rio_t *rp, hhr_t *hp);
 
 /*
  * 向客户端发送一个HTTP响应，其中包含相应的状态码和状态信息
@@ -67,5 +68,11 @@ static int is_contype(char *str);
 
 // 判断str起始位置开始是否包含"content-length"
 static int is_conlength(char *str);
+
+// 发送http请求行和请求体数据给fastcgi服务器
+int send_fastcgi(rio_t *rp, hhr_t *hp, int sock);
+
+// 接收fastcgi返回的数据
+int recv_fastcgi(int fd, int sock);
 
 #endif
