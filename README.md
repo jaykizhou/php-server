@@ -34,6 +34,27 @@ C语言实现的一个简单web服务器，只支持GET和POST请求，支持php
 
 打开浏览器运行结果：
 
-![](https://github.com/jaykizhou/php-server/blob/master/readme-img/24.png)
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/8.png)
 
-![](https://github.com/jaykizhou/php-server/blob/master/readme-img/24.png)
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/10.png)
+
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/11.png)
+
+4.试试运行codeigniter框架。
+下载ci框架到程序所在目录的ci子目录中。
+
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/13.png)
+
+修改默认Welcome.php控制器文件内容：
+
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/19.png)
+
+打开codeigniter框架默认文件index.php:
+
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/15.png)
+
+
+运行welcome控制器的test方法：
+
+![](https://github.com/jaykizhou/php-server/blob/master/readme-img/20.png)
+
