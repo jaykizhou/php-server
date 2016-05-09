@@ -41,6 +41,7 @@ C语言实现的一个简单web服务器，只支持GET和POST请求，支持php
 ![](https://github.com/jaykizhou/php-server/blob/master/readme-img/11.png)
 
 4.试试运行codeigniter框架。
+
 下载ci框架到程序所在目录的ci子目录中。
 
 ![](https://github.com/jaykizhou/php-server/blob/master/readme-img/13.png)
