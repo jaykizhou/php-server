@@ -306,6 +306,15 @@ int send_to_cli(int fd, int outlen, char *out,
     char *p;
     int n;
 
+    char buf[MAXLINE];
+    sprintf(buf, "HTTP/1.1 200 OK\r\n");
+    sprintf(buf, "%sServer: Zhou Web Server\r\n", buf);
+    sprintf(buf, "%sContent-Length: %d\r\n", buf, outlen + errlen);
+    sprintf(buf, "%sContent-Type: %s\r\n\r\n", buf, "text/html");
+    if (rio_writen(fd, buf, strlen(buf)) < 0) {
+        error_log("write to client error", DEBUGARGS);
+    }
+
     if (outlen > 0) {
         p = index(out, '\r'); 
         n = (int)(p - out);
