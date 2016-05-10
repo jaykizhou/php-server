@@ -3,14 +3,14 @@
 C语言实现的一个简单web服务器，只支持GET和POST请求，支持php
 
 ###运行方法
-在代码目录下执行make，然后执行可执行文件zo，默认端口为8000
-
-同时需要系统已经有php-fpm。
+在代码目录下执行make，然后执行可执行文件zo，默认端口为8000，同时需要系统已经有php-fpm。
 
 Ubuntu下可使用下面命令安装：
+
 `sudo apt-get install php5-fpm`
 
 修改php-fpm配置文件设置监听端口：
+
 `listen =127.0.0.1:9000`
 
 ###运行效果
